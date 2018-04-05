@@ -1,4 +1,5 @@
 BroFist!!!
+New repository https://github.com/modcrypto/brofist
 
 BROFIST COIN - A COIN THAT YOU CAN MINE, RUN MASTERNODES AND SHOW TO YOUR MOM
 
