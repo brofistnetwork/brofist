@@ -36,7 +36,7 @@ CCriticalSection cs_mapMasternodePaymentVotes;
 bool IsBlockValueValid(const CBlock& block, int nBlockHeight, CAmount blockReward, std::string &strErrorRet)
 {
     strErrorRet = "";
-
+    blockReward += GetDevFundPayment(nBlockHeight);
     bool isBlockRewardValueMet = (block.vtx[0].GetValueOut() <= blockReward);
     if(fDebug) LogPrintf("block.vtx[0].GetValueOut() %lld <= blockReward %lld\n", block.vtx[0].GetValueOut(), blockReward);
 
@@ -137,13 +137,17 @@ bool IsBlockPayeeValid(const CTransaction& txNew, int nBlockHeight, CAmount bloc
         if(fDebug) LogPrintf("IsBlockPayeeValid -- WARNING: Client not synced, skipping block payee checks\n");
         return true;
     }
-
+       
     // we are still using budgets, but we have no data about them anymore,
     // we can only check masternode payments
 
     const Consensus::Params& consensusParams = Params().GetConsensus();
 
     if(nBlockHeight < consensusParams.nSuperblockStartBlock) {
+        if(mnpayments.IsTransactionValid(txNew, nBlockHeight-1)) {
+            LogPrint("mnpayments", "IsBlockPayeeValid -- Valid masternode payment at height %d: %s", nBlockHeight, txNew.ToString());
+            return true;
+        }
         if(mnpayments.IsTransactionValid(txNew, nBlockHeight)) {
             LogPrint("mnpayments", "IsBlockPayeeValid -- Valid masternode payment at height %d: %s", nBlockHeight, txNew.ToString());
             return true;
@@ -164,7 +168,7 @@ bool IsBlockPayeeValid(const CTransaction& txNew, int nBlockHeight, CAmount bloc
         }
 
         if(sporkManager.IsSporkActive(SPORK_8_MASTERNODE_PAYMENT_ENFORCEMENT)) {
-            LogPrintf("IsBlockPayeeValid -- ERROR: Invalid masternode payment detected at height %d: %s", nBlockHeight, txNew.ToString());
+            LogPrintf("IsBlockPayeeValid -- ERROR: 1) Invalid masternode payment detected at height %d: %s", nBlockHeight, txNew.ToString());
             return false;
         }
 
@@ -200,7 +204,7 @@ bool IsBlockPayeeValid(const CTransaction& txNew, int nBlockHeight, CAmount bloc
     }
 
     if(sporkManager.IsSporkActive(SPORK_8_MASTERNODE_PAYMENT_ENFORCEMENT)) {
-        LogPrintf("IsBlockPayeeValid -- ERROR: Invalid masternode payment detected at height %d: %s", nBlockHeight, txNew.ToString());
+        LogPrintf("IsBlockPayeeValid -- ERROR: 2) Invalid masternode payment detected at height %d: %s", nBlockHeight, txNew.ToString());
         return false;
     }
 
@@ -223,6 +227,15 @@ void FillBlockPayments(CMutableTransaction& txNew, int nBlockHeight, CAmount blo
     mnpayments.FillBlockPayee(txNew, nBlockHeight, blockReward, txoutMasternodeRet);
     LogPrint("mnpayments", "FillBlockPayments -- nBlockHeight %d blockReward %lld txoutMasternodeRet %s txNew %s",
                             nBlockHeight, blockReward, txoutMasternodeRet.ToString(), txNew.ToString());
+  
+    CAmount developerPayment = GetDevFundPayment(nBlockHeight);
+    if(developerPayment>0){
+        CBitcoinAddress devaddress;
+        devaddress.SetString("PKnYyL2ctcRuHoJVuUr7KD3toci2gnKEQU"); 
+        CTxOut txoutDevRet = CTxOut(developerPayment, GetScriptForDestination(devaddress.Get()));
+        txNew.vout.push_back(txoutDevRet);
+        LogPrintf("Developer Fund payment of value %u\n",developerPayment/COIN);
+    }                        
 }
 
 std::string GetRequiredPaymentsString(int nBlockHeight)
@@ -264,11 +277,13 @@ bool CMasternodePayments::CanVote(COutPoint outMasternode, int nBlockHeight)
 
 void CMasternodePayments::FillBlockPayee(CMutableTransaction& txNew, int nBlockHeight, CAmount blockReward, CTxOut& txoutMasternodeRet)
 {
+
+
     // make sure it's not filled yet
     txoutMasternodeRet = CTxOut();
 
     CScript payee;
-
+    CAmount masternodeCoin=0;
     if(!mnpayments.GetBlockPayee(nBlockHeight, payee)) {
         // no masternode detected...
         int nCount = 0;
@@ -280,10 +295,15 @@ void CMasternodePayments::FillBlockPayee(CMutableTransaction& txNew, int nBlockH
         }
         // fill payee with locally calculated winner and hope for the best
         payee = GetScriptForDestination(winningNode->pubKeyCollateralAddress.GetID());
+        masternodeCoin = winningNode->getCollateralValue();
+    }else{
+       CMasternode *winningNode= NULL;
+       winningNode = mnodeman.Find(payee);    
+       masternodeCoin = winningNode->getCollateralValue();   
     }
 
     // GET MASTERNODE PAYMENT VARIABLES SETUP
-    CAmount masternodePayment = GetMasternodePayment(nBlockHeight, blockReward);
+    CAmount masternodePayment = GetMasternodePayment(nBlockHeight, blockReward, masternodeCoin);
 
     // split reward between miner ...
     txNew.vout[0].nValue -= masternodePayment;
@@ -295,13 +315,19 @@ void CMasternodePayments::FillBlockPayee(CMutableTransaction& txNew, int nBlockH
     ExtractDestination(payee, address1);
     CBitcoinAddress address2(address1);
 
-    LogPrintf("CMasternodePayments::FillBlockPayee -- Masternode payment %lld to %s\n", masternodePayment, address2.ToString());
+    LogPrintf("CMasternodePayments::FillBlockPayee mastercoin:%d -- Masternode payment %lld to %s\n",(masternodeCoin/COIN), masternodePayment, address2.ToString());
 }
 
 int CMasternodePayments::GetMinMasternodePaymentsProto() {
+    if(pCurrentBlockIndex->nHeight > SOFTFORK1_STARTBLOCK ){
+        return MIN_MASTERNODE_PAYMENT_PROTO_VERSION_2;
+    }
+    return MIN_MASTERNODE_PAYMENT_PROTO_VERSION_1;
+    
+   /*
     return sporkManager.IsSporkActive(SPORK_10_MASTERNODE_PAY_UPDATED_NODES)
             ? MIN_MASTERNODE_PAYMENT_PROTO_VERSION_2
-            : MIN_MASTERNODE_PAYMENT_PROTO_VERSION_1;
+            : MIN_MASTERNODE_PAYMENT_PROTO_VERSION_1; */
 }
 
 void CMasternodePayments::ProcessMessage(CNode* pfrom, std::string& strCommand, CDataStream& vRecv)
@@ -524,7 +550,7 @@ bool CMasternodeBlockPayees::GetBestPayee(CScript& payeeRet)
             nVotes = payee.GetVoteCount();
         }
     }
-
+    LogPrintf("CMasternodeBlockPayees::GetBestPayee -- maxvote: %d \n", nVotes);
     return (nVotes > -1);
 }
 
@@ -544,13 +570,13 @@ bool CMasternodeBlockPayees::HasPayeeWithVotes(CScript payeeIn, int nVotesReq)
 
 bool CMasternodeBlockPayees::IsTransactionValid(const CTransaction& txNew)
 {
+    LogPrintf("IsTransactionValid : transaction = %s \n", txNew.ToString());
     LOCK(cs_vecPayees);
 
     int nMaxSignatures = 0;
     std::string strPayeesPossible = "";
 
-    CAmount nMasternodePayment = GetMasternodePayment(nBlockHeight, txNew.GetValueOut());
-
+   
     //require at least MNPAYMENTS_SIGNATURES_REQUIRED signatures
 
     BOOST_FOREACH(CMasternodePayee& payee, vecPayees) {
@@ -558,12 +584,16 @@ bool CMasternodeBlockPayees::IsTransactionValid(const CTransaction& txNew)
             nMaxSignatures = payee.GetVoteCount();
         }
     }
-
+    
     // if we don't have at least MNPAYMENTS_SIGNATURES_REQUIRED signatures on a payee, approve whichever is the longest chain
     if(nMaxSignatures < MNPAYMENTS_SIGNATURES_REQUIRED) return true;
+    
+    CAmount nMasternodePayment=0;
 
     BOOST_FOREACH(CMasternodePayee& payee, vecPayees) {
         if (payee.GetVoteCount() >= MNPAYMENTS_SIGNATURES_REQUIRED) {
+            CMasternode *mnode = mnodeman.Find(payee.GetPayee());
+            nMasternodePayment = GetMasternodePayment(nBlockHeight, txNew.GetValueOut(), mnode->getCollateralValue());
             BOOST_FOREACH(CTxOut txout, txNew.vout) {
                 if (payee.GetPayee() == txout.scriptPubKey && nMasternodePayment == txout.nValue) {
                     LogPrint("mnpayments", "CMasternodeBlockPayees::IsTransactionValid -- Found required payment\n");
@@ -581,9 +611,10 @@ bool CMasternodeBlockPayees::IsTransactionValid(const CTransaction& txNew)
                 strPayeesPossible += "," + address2.ToString();
             }
         }
+        //***    
     }
 
-    LogPrintf("CMasternodeBlockPayees::IsTransactionValid -- ERROR: Missing required payment, possible payees: '%s', amount: %f PEW\n", strPayeesPossible, (float)nMasternodePayment/COIN);
+    LogPrintf("CMasternodeBlockPayees::IsTransactionValid -- ERROR: Missing required payment, possible payees: '%s', amount: %f PEW, vote:%d\n", strPayeesPossible, (float)nMasternodePayment/COIN, nMaxSignatures);
     return false;
 }
 
