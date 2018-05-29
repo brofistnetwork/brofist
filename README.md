@@ -1,13 +1,75 @@
-BroFist!!!
+![Brofist Logo](/src/qt/res/icons/bitcoin.png)
 
-BROFIST COIN - A COIN THAT YOU CAN MINE, RUN MASTERNODES AND SHOW TO YOUR MOM
+BROFIST COIN - A COMMUNITY RE-DESIGNED COIN 
 
 What is BroFist?
 ----------------
 
-This is the one that’s really gonna take off. Trust me. I am the most trustworthy Youtuber on the platform and I’m telling you right here, right now, BroFistCoin is where it’s at. We’re gonna BROFIIIIIIIIIIIIIIST to the TOP! This is the cryptocurrency that’s really gonna make it. It’s gonna be great.
+I make this fork to look after it, and make it to be the community stable and reliable coin.
 
-Additional information, wallets, specifications & roadmap: http://brofistcoin.su/
+- Maximum Supply: 31,000,000 coins
+- Algorithm: NeoScrypt
+- Type: PoW + MasterNode
+- Coin name: BroFist Coin
+- Coin abbreviation: PEW
+- Block Time Average: 120 sec
+- Block Reward: 0-150 - 1 PEW, 150-250 - 3 PEW, 250+ - 12 PEW. 
+- Block Reward Distribution: 6 PEW to Masternodes, 6 PEW to Miners
+- Premine: 1% (300,000 PEW with [Ex-Developer] https://github.com/brofistnetwork/brofist )
+- Port P2P:***11113** RPC:**12454***
+
+Tools
+-------------
+* Block Explorer : https://pew.overemo.com/
+* Bitcointalk ANN : https://bitcointalk.org/index.php?topic=3025770.80 
+* Website: http://brofist-coin.firebaseapp.com  (coming soon)
+* Exchange: 
+  - Graviex - https://graviex.net/markets/pewbtc
+  - BarterDEX - https://komodoplatform.com/decentralized-exchange/
+    To use BarterDEX, you must set **rpcport=12454** in brofist.conf 
+
+* Discord: (Old) https://discord.gg/p2rsNEb  (New) https://discord.gg/QBTgeMZ
+
+Downloads
+----------------
+* [Windows 32 Wallet](https://github.com/modcrypto/brofist/releases/download/1.1/brofist32-qt.1.2.zip) (Stable)
+* [Linux Wallet](https://github.com/modcrypto/brofist/releases/download/1.1/brofishd_ubuntu.1.1.tar.gz)
+* MacOS Wallet
+* [Blockchain](https://github.com/modcrypto/brofist/releases/download/1.0/brofist_blockchain_24176.zip) 1 - 24176 blocks
+
+How to Repair Your Masternode
+------------------------
+1. Close your BroFist wallet.
+2. Delete everything from the folder <USER_FOLDER>\AppData\Roaming\BroFistCore (for windows), 
+   EXCEPT wallet.dat, brofist.conf, masternode.conf and backup folder.
+
+![Sample Screen](/doc/brofist_doc/step1.png)
+
+Be extremely careful not to delete wallet.dat, or you may loose all your coins.
+
+3. Then you need to add nodes that are 100% sure on the right chain to your brofist.conf file :
+Code: Last update 13-04-2018 
+```ini
+maxconnections=30
+addnode=pew.overemo.com
+addnode=173.249.9.82
+addnode=207.148.119.112
+addnode=198.13.62.66
+addnode=185.5.251.7
+addnode=212.237.25.226
+addnode=185.148.39.82
+addnode=90.189.149.194
+addnode=176.62.66.106
+addnode=45.77.198.234
+
+```
+Please don't make maxconnections number higher than 30, or you might desync again.
+
+4. Open your BroFist wallet again.
+
+Master Node Guide
+----------------
+* [Setting Multiple Masternodes on Ubuntu VPS](https://github.com/modcrypto/brofist/blob/master/doc/masternode_multi.md)
 
 
 License
@@ -52,4 +114,3 @@ Changes should be tested by somebody other than the developer who wrote the
 code. This is especially important for large or high-risk changes. It is useful
 to add a test plan to the pull request description if testing the changes is
 not straightforward.
-

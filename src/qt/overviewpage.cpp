@@ -23,6 +23,8 @@
 #include "instantx.h"
 #include "darksendconfig.h"
 #include "masternode-sync.h"
+#include "version.h"
+#include "rpcserver.h"
 
 #include <QAbstractItemDelegate>
 #include <QPainter>
@@ -31,7 +33,7 @@
 
 #define ICON_OFFSET 16
 #define DECORATION_SIZE 54
-#define NUM_ITEMS 5
+#define NUM_ITEMS 8
 #define NUM_ITEMS_ADV 7
 
 class TxViewDelegate : public QAbstractItemDelegate
@@ -158,9 +160,18 @@ OverviewPage::OverviewPage(const PlatformStyle *platformStyle, QWidget *parent) 
 
     // start with displaying the "out of sync" warnings
     showOutOfSyncWarning(true);
+    
+    ui->MessageLabel->setVisible(!fLiteMode);
 
     // that's it for litemode
     if(fLiteMode) return;
+
+    ui->MessageLabel->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    ui->MessageLabel->setOpenExternalLinks(true);
+
+    timerMsg = new QTimer(this);
+    connect(timerMsg, SIGNAL(timeout()), this, SLOT(updateInformation()));
+    timerMsg->start(10000);
 
     // Disable any PS UI for masternode or when autobackup is disabled or failed for whatever reason
     if(fMasterNode || nWalletBackups <= 0){
@@ -180,7 +191,7 @@ OverviewPage::OverviewPage(const PlatformStyle *platformStyle, QWidget *parent) 
 
         timer = new QTimer(this);
         connect(timer, SIGNAL(timeout()), this, SLOT(privateSendStatus()));
-        timer->start(1000);
+        timer->start(2000);
     }
 }
 
@@ -192,10 +203,28 @@ void OverviewPage::handleTransactionClicked(const QModelIndex &index)
 
 OverviewPage::~OverviewPage()
 {
+    if(!fLiteMode) disconnect(timerMsg, SIGNAL(timeout()), this, SLOT(updateInformation()));
     if(!fLiteMode && !fMasterNode) disconnect(timer, SIGNAL(timeout()), this, SLOT(privateSendStatus()));
     delete ui;
 }
 
+void OverviewPage::updateInformation(){
+    int nBlocks = clientModel->getNumBlocks();
+    
+    QString txt = tr("<h2>Information</h2>\n<ul>"); 
+    txt += tr("<li>Current Version: <span style='color:#a00'> %1</span> </li>").arg(QString::fromStdString(FormatFullVersion())); 
+    if( nBlocks < SOFTFORK1_STARTBLOCK+100){
+       txt += tr("<li>Soft Fork Start Blocks: <span style='color:#a00'> %1</span> </li>").arg(SOFTFORK1_STARTBLOCK);
+    }
+    txt += tr("<li>Current Blocks: <span style='color:#a00'> %1</span> </li>").arg(nBlocks); 
+    txt += tr("<li>Difficulty: <span style='color:#a00'> %1</span></li>").arg(GetDifficulty()); 
+    txt += tr("<li>Connection : <span style='color:#a00'> %1</span> </li>").arg( clientModel->getNumConnections()); 
+    txt += tr("<li>Master Nodes <span style='color:#a00'> %1</span><br> </li>").arg( clientModel->getMasternodeCountString()); 
+    txt += tr("<li>Official Website: <a href='http://www.brofist.online/'>http://www.brofist.online/</a> </li>"); 
+    txt += tr("<li>Github: <a href='https://github.com/modcrypto/brofist/'>https://github.com/modcrypto/brofist</a> </li>"); 
+    txt += tr("</ul>");
+    ui->MessageLabel->setText(txt);    
+}
 void OverviewPage::setBalance(const CAmount& balance, const CAmount& unconfirmedBalance, const CAmount& immatureBalance, const CAmount& anonymizedBalance, const CAmount& watchOnlyBalance, const CAmount& watchUnconfBalance, const CAmount& watchImmatureBalance)
 {
     currentBalance = balance;
@@ -233,6 +262,7 @@ void OverviewPage::setBalance(const CAmount& balance, const CAmount& unconfirmed
         cachedTxLocks = nCompleteTXLocks;
         ui->listTransactions->update();
     }
+    
 }
 
 // show/hide watch-only labels
@@ -322,6 +352,7 @@ void OverviewPage::showOutOfSyncWarning(bool fShow)
     ui->labelWalletStatus->setVisible(fShow);
     ui->labelPrivateSendSyncStatus->setVisible(fShow);
     ui->labelTransactionsStatus->setVisible(fShow);
+    updateInformation();
 }
 
 void OverviewPage::updatePrivateSendProgress()
@@ -438,14 +469,14 @@ void OverviewPage::updateAdvancedPSUI(bool fShowAdvancedPSUI) {
 
     if (fLiteMode) return;
 
-    ui->framePrivateSend->setVisible(true);
+    ui->framePrivateSend->setVisible(fShowAdvancedPSUI);
     ui->labelCompletitionText->setVisible(fShowAdvancedPSUI);
     ui->privateSendProgress->setVisible(fShowAdvancedPSUI);
     ui->labelSubmittedDenomText->setVisible(fShowAdvancedPSUI);
     ui->labelSubmittedDenom->setVisible(fShowAdvancedPSUI);
     ui->privateSendAuto->setVisible(fShowAdvancedPSUI);
     ui->privateSendReset->setVisible(fShowAdvancedPSUI);
-    ui->privateSendInfo->setVisible(true);
+    ui->privateSendInfo->setVisible(fShowAdvancedPSUI);
     ui->labelPrivateSendLastMessage->setVisible(fShowAdvancedPSUI);
 }
 
